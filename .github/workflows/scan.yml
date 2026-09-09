@@ -1,0 +1,25 @@
+name: scan
+on:
+  schedule:
+    - cron: "9 * * * *"   # hourly; the page reads the last hour live
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: scan
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scan.mjs
+      - name: commit
+        run: |
+          git config user.name "records-data-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A data
+          git diff --cached --quiet || git commit -m "records $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
