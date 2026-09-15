@@ -27,7 +27,9 @@ const ENGINE = "0x5a362ffdab7ffa585d50f1a5c032288ef0029740";
 const NFT = "0x2d4dff47ba18c89847faca0c968e073d8b70abb4";
 const DEPLOY_BLOCK = 48_370_000;
 const SAFE = 64;
-const PAGE = 750_000, MIN_PAGE = 25_000;
+// the node's window: on 2026-09-15 the official RPC began refusing 10,000+ blocks
+// ("internal server errror"; 9,999 answers) — page under it, halve on any complaint
+const PAGE = 9_000, MIN_PAGE = 1_000;
 const GAP_MS = 800;
 const TOPIC = {
   SETTLED: "0x866f813a2289b14a1e94be9b6a7db4b5ad759df3fb1466245f650642f3cc7a56",
@@ -66,7 +68,9 @@ async function rpc(method, params) {
   }
   throw last;
 }
-const tooBig = (e) => /more than|too many|timed out|too large|exceed|limit/i.test(String(e && e.message || e));
+// any node complaint about a range is a reason to halve it — the words change ("log query
+// timed out", "internal server errror" for a window it will not serve); a retry never helps
+const tooBig = (e) => !!(e && e.rpc) || /more than|too many|timed out|too large|exceed|limit|internal server/i.test(String(e && e.message || e));
 
 /// every log of `filter` in [from, to], halving on a complaint, growing back on success
 async function scan(filter, from, to, onPage) {
@@ -152,7 +156,17 @@ async function main() {
   }
   const tokens = fs.existsSync(path.join(DATA, "t")) ? fs.readdirSync(path.join(DATA, "t")).length : 0;
   const walletFiles = fs.existsSync(path.join(DATA, "w")) ? fs.readdirSync(path.join(DATA, "w")).length : 0;
-  writeIfChanged(path.join(DATA, "head.json"), { head: to, at: new Date().toISOString(), rounds: rounds.length, tokens, wallets: walletFiles });
+  // the headcount the street shows (2026-09-15: the site can no longer scan it live — the
+  // node's 9,999-block window makes that ~1,700 requests): a broker is on payroll when his
+  // last sync carries a weight and he was not burned (merged away) after it
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  let hired = 0;
+  if (tokens) for (const f of fs.readdirSync(path.join(DATA, "t"))) {
+    const r = readJson(path.join(DATA, "t", f), null); if (!r) continue;
+    const s = r.s && r.s[r.s.length - 1], burn = (r.t || []).find((x) => x[1] === ZERO);
+    if (s && BigInt(s[0]) > 0n && !burn) hired++;
+  }
+  writeIfChanged(path.join(DATA, "head.json"), { head: to, at: new Date().toISOString(), rounds: rounds.length, tokens, wallets: walletFiles, hired });
   console.log(`done: head ${to} · rounds ${rounds.length} · settled +${settled.length} · engine +${engine.length} · transfers +${transfers.length} · tokens ${tokens} · wallets ${walletFiles} · files written ${written} · rpc calls ${calls} (retries ${retries}) · ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
 main().catch((e) => { console.error("scan failed:", e && e.stack || e); process.exit(1); });

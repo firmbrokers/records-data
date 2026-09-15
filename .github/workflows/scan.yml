@@ -2,6 +2,7 @@ name: scan
 on:
   schedule:
     - cron: "9 * * * *"   # hourly; the page reads the last hour live
+    - cron: "39 * * * *"  # a second slot: GitHub drops scheduled runs under load (2–7 h gaps seen 2026-09-15)
   workflow_dispatch:
 permissions:
   contents: write
